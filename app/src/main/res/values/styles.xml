@@ -1,0 +1,8 @@
+<resources>
+
+    <style name="PrimaryFabIconStyle" parent="Widget.Design.FloatingActionButton">
+        <item name="backgroundTint">#DA291C</item>
+        <item name="tint">@null</item>
+    </style>
+
+</resources>
