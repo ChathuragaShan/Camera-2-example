@@ -6,17 +6,16 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.ImageFormat
 import android.hardware.camera2.*
-import android.media.Image
-import android.media.ImageReader
+import android.media.*
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO
 import android.util.Log
 import android.util.SparseIntArray
 import android.view.Surface
 import androidx.activity.result.ActivityResultLauncher
 import androidx.lifecycle.lifecycleScope
-import com.chathurangashan.camera2example.interfaces.NavigationUpListener
 import com.chathurangashan.camera2example.utils.camera.OrientationLiveData
 import com.chathurangashan.camera2example.utils.camera.computeExifOrientation
 import kotlinx.coroutines.launch
@@ -32,20 +31,25 @@ import java.util.concurrent.TimeoutException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
+import android.hardware.camera2.params.SessionConfiguration
+import android.net.IpPrefix
+import android.util.Range
+import android.util.Size
+import kotlinx.coroutines.Dispatchers
 
 abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutResource){
 
     protected lateinit var characteristics: CameraCharacteristics
     protected lateinit var camera: CameraDevice
     protected lateinit var session: CameraCaptureSession
-    protected lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
+    protected lateinit var requestPermissionLauncher: ActivityResultLauncher<Array<String>>
     protected lateinit var captureImageReader: ImageReader
 
     /** Live data listener for changes in the device orientation relative to the camera */
     protected lateinit var relativeOrientation: OrientationLiveData
 
     protected var cameraId: String? = null
-    private var androidImageCompressionRatio = 95
+    protected var isRecording = false
 
     /** [HandlerThread] and [Handler] where all camera operations run */
     private val cameraThread = HandlerThread("CameraThread").apply { start() }
@@ -61,6 +65,8 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
         requireContext().applicationContext.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     }
 
+    protected val mediaRecorder by lazy { MediaRecorder() }
+
     companion object {
 
         val TAG: String = CameraBaseFragment::class.java.simpleName
@@ -70,6 +76,11 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
 
         /** Maximum time allowed to wait for the result of an image capture */
         const val IMAGE_CAPTURE_TIMEOUT_MILLIS: Long = 5000
+
+        /** Image compression value for saving capture image */
+        private var CAPTURE_IMAGE_COMPRESSION_RATIO = 95
+
+        private const val MIN_REQUIRED_RECORDING_TIME_MILLIS: Long = 1000L
 
         /** Helper data class used to hold capture metadata with their associated image */
         data class CombinedCaptureResult(
@@ -86,9 +97,9 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
          *
          * @return [File] created.
          */
-        fun createFile(context: Context, extension: String): File {
+        fun createFile(context: Context, extension: String, prefix: String): File {
             val sdf = SimpleDateFormat("yyyy_MM_dd_HH_mm_ss_SSS", Locale.US)
-            return File(context.filesDir, "IMG_${sdf.format(Date())}.$extension")
+            return File(context.filesDir, "${prefix}_${sdf.format(Date())}.$extension")
         }
 
         val ORIENTATIONS = SparseIntArray(4)
@@ -158,6 +169,10 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
         }, handler)
     }
 
+    /**
+     * This function create a [CameraCaptureSession] which responsible for getting camera data output
+     * for processing it
+     */
     protected suspend fun createCaptureSession(
         device: CameraDevice, targets: List<Surface>,
         handler: Handler? = null
@@ -182,8 +197,7 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
      * template. It performs synchronization between the [CaptureResult] and the [Image] resulting
      * from the single capture, and outputs a [CombinedCaptureResult] object.
      */
-    protected suspend fun takePhoto():
-            CombinedCaptureResult = suspendCoroutine { cont ->
+    protected suspend fun takePhoto(): CombinedCaptureResult = suspendCoroutine { cont ->
 
         // Flush any images left in the image reader
         @Suppress("ControlFlowWithEmptyBody")
@@ -200,17 +214,11 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
 
         val captureRequest = session.device.createCaptureRequest(
             CameraDevice.TEMPLATE_STILL_CAPTURE
-        ).apply { addTarget(captureImageReader.surface) }
-        session.capture(captureRequest.build(), object : CameraCaptureSession.CaptureCallback() {
+        ).apply {
+            addTarget(captureImageReader.surface)
+        }
 
-            override fun onCaptureStarted(
-                session: CameraCaptureSession,
-                request: CaptureRequest,
-                timestamp: Long,
-                frameNumber: Long
-            ) {
-                super.onCaptureStarted(session, request, timestamp, frameNumber)
-            }
+        session.capture(captureRequest.build(), object : CameraCaptureSession.CaptureCallback() {
 
             override fun onCaptureCompleted(
                 session: CameraCaptureSession,
@@ -263,12 +271,43 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
                                 image, result, exifOrientation, captureImageReader.imageFormat
                             )
                         )
-
-                        // There is no need to break out of the loop, this coroutine will suspend
                     }
                 }
             }
         }, cameraHandler)
+    }
+
+    protected fun recordVideo() {
+
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            val recordRequest = session.device
+                .createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+                    addTarget(mediaRecorder.surface)
+                }
+
+            session.setRepeatingRequest(recordRequest.build(), null, cameraHandler)
+
+            mediaRecorder.apply {
+                start()
+            }
+        }
+    }
+
+    protected fun stopRecording() {
+
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            mediaRecorder.apply {
+                try {
+                    stop()
+                    reset()
+                } catch (e: IllegalStateException) {
+                    Log.e(TAG, e.toString())
+                }
+            }
+
+        }
     }
 
     /** Helper function used to save a [CombinedCaptureResult] into a [File] */
@@ -282,7 +321,7 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
 
                 @Suppress("BlockingMethodInNonBlockingContext")
                 try {
-                    val output = createFile(requireContext(), "jpg")
+                    val output = createFile(requireContext(), "jpg","IMG")
                     FileOutputStream(output).use { it.write(bytes) }
                     cont.resume(output)
                 } catch (exc: IOException) {
@@ -314,7 +353,7 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
         var fileOutputStream: FileOutputStream? = null
         try {
             fileOutputStream = FileOutputStream(filePath)
-            bitmapImage.compress(Bitmap.CompressFormat.JPEG, androidImageCompressionRatio, fileOutputStream)
+            bitmapImage.compress(Bitmap.CompressFormat.JPEG, CAPTURE_IMAGE_COMPRESSION_RATIO, fileOutputStream)
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
@@ -338,6 +377,25 @@ abstract class CameraBaseFragment(layoutResource: Int) : BaseFragment(layoutReso
             characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)
         val surfaceRotation = ORIENTATIONS.get(displayRotation!!)
         return (surfaceRotation + sensorOrientation!! + 270) % 360
+    }
+
+    protected fun configureMediaRecorder(fps: Int, videoResolution: Size) {
+
+        val rotation = relativeOrientation.value ?: defaultOrientation()
+
+        mediaRecorder.apply {
+            setVideoSource(MediaRecorder.VideoSource.SURFACE)
+            setAudioSource(MediaRecorder.AudioSource.MIC)
+            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            setOutputFile(createFile(requireContext(), "mp4","VID").absolutePath)
+            setVideoEncodingBitRate(10000000)
+            setVideoFrameRate(fps)
+            setVideoSize(videoResolution.width, videoResolution.height)
+            setOrientationHint(rotation)
+            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            prepare()
+        }
     }
 
     override fun onStop() {

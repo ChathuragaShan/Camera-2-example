@@ -4,9 +4,8 @@
       <root url="jar://$USER_HOME$/.gradle/caches/transforms-3/84e725b82fbeec159869b132c2866750/transformed/swiperefreshlayout-1.0.0/annotations.zip!/" />
     </ANNOTATIONS>
     <CLASSES>
-      <root url="file://$USER_HOME$/.gradle/caches/transforms-3/bd17f60d73a589ef379a7ab0bf5a387f/transformed/swiperefreshlayout-1.0.0/res" />
-      <root url="file://$USER_HOME$/.gradle/caches/transforms-3/84e725b82fbeec159869b132c2866750/transformed/swiperefreshlayout-1.0.0/res" />
       <root url="jar://$USER_HOME$/.gradle/caches/transforms-3/84e725b82fbeec159869b132c2866750/transformed/swiperefreshlayout-1.0.0/jars/classes.jar!/" />
+      <root url="file://$USER_HOME$/.gradle/caches/transforms-3/84e725b82fbeec159869b132c2866750/transformed/swiperefreshlayout-1.0.0/res" />
       <root url="file://$USER_HOME$/.gradle/caches/transforms-3/84e725b82fbeec159869b132c2866750/transformed/swiperefreshlayout-1.0.0/AndroidManifest.xml" />
     </CLASSES>
     <JAVADOC />

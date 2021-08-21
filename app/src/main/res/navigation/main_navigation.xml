@@ -8,6 +8,6 @@
     <fragment
         android:id="@+id/cameraFragment"
         android:name="com.chathurangashan.camera2example.ui.fragments.CameraFragment"
-        android:label="fragment_camera"
+        android:label="Camera"
         tools:layout="@layout/fragment_camera" />
 </navigation>

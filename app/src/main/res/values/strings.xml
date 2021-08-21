@@ -1,9 +1,12 @@
 <resources>
     <string name="app_name">Camera 2 example</string>
     <string name="hello_blank_fragment">Hello blank fragment</string>
-    <string name="camera_permission_denied">Camera permission request was denied.</string>
     <string name="camera_id_find_error">Could not fine a back facing camera with basic requirement</string>
-    <string name="camera_access_required">Camera access is required to capture documents.</string>
-    <string name="camera_permission_not_available">Permission is not available. Requesting camera permission.</string>
+    <string name="camera_access_required">Camera access is required to capture images.</string>
+    <string name="camera_permission_not_available">Camera permission is not available. Requesting camera permission.</string>
+    <string name="camera_permission_denied">Camera permission request was denied.</string>
+    <string name="audio_record_access_required">audio record access is required to capture documents.</string>
+    <string name="audio_record_permission_not_available">Audio record permission is not available. Requesting audio record permission.</string>
+    <string name="audio_record_permission_denied">Audio record permission request was denied.</string>
 
 </resources>
